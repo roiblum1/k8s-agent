@@ -1,0 +1,5 @@
+# Images to mirror into the air-gapped registry, one per line (source reference).
+# agent-sandbox controller, applied from release v1.0.9 sandbox.yaml (README step 1)
+registry.k8s.io/agent-sandbox/agent-sandbox-controller:v1.0.9
+# base image of agent/Dockerfile, pulled when building the upgrade-agent image (README step 2)
+docker.io/library/python:3.12-slim
