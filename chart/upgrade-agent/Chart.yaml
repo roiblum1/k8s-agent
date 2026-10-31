@@ -1,0 +1,12 @@
+apiVersion: v2
+name: upgrade-agent
+description: >-
+  The ClickCluster HCP upgrade agent, run as a kubernetes-sigs agent-sandbox
+  Sandbox on an MCE. It diagnoses a failed upgrade gate with read-only tools
+  and proposes catalog actions; it never writes to a cluster.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# Needs the agent-sandbox controller and CRDs (agents.x-k8s.io/v1beta1), v1.0.9.
+kubeVersion: ">=1.29.0-0"
+keywords: [hypershift, upgrade, agent, agent-sandbox]

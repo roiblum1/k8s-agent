@@ -1,0 +1,148 @@
+{{- /*
+The agent as a kubernetes-sigs agent-sandbox Sandbox (agents.x-k8s.io/v1beta1,
+agent-sandbox v1.0.9): one stateful pod with a stable identity and its own
+volume, recreated by the controller if it fails.
+
+The controller does NOT roll the pod when podTemplate.spec changes (only its
+labels and annotations follow). After a `helm upgrade` that changes the image,
+the config or a mount, delete the pod; the controller recreates it from the
+new template.
+*/ -}}
+apiVersion: agents.x-k8s.io/v1beta1
+kind: Sandbox
+metadata:
+  name: {{ include "upgrade-agent.fullname" . }}
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+spec:
+  # A Failed pod (an eviction, say) is replaced, the identity and the volume kept.
+  failedPodPolicy: Recreate
+  podTemplate:
+    metadata:
+      labels:
+        {{- include "upgrade-agent.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "upgrade-agent.serviceAccountName" . }}
+      # The MCE reads use this pod's own ServiceAccount token.
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "upgrade-agent.fullname" . }}
+          env:
+            {{- with .Values.model.apiKeySecret.secretName }}
+            - name: MODEL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.model.apiKeySecret.key }}
+            {{- end }}
+            {{- with .Values.apiToken.secretName }}
+            - name: AGENT_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ $.Values.apiToken.key }}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.persistence.enabled }}
+            - name: state
+              mountPath: /var/lib/upgrade-agent
+            {{- end }}
+            {{- if .Values.runbooks.configMap }}
+            - name: runbooks
+              mountPath: /etc/upgrade-agent/runbooks
+              readOnly: true
+            {{- end }}
+            {{- if .Values.model.caConfigMap.name }}
+            - name: model-ca
+              mountPath: /etc/upgrade-agent/model-ca
+              readOnly: true
+            {{- end }}
+            {{- range $i, $hc := .Values.hostedClusters }}
+            - name: hosted-{{ $i }}
+              mountPath: /var/run/upgrade-agent/hosted/{{ required "hostedClusters[].name is required" $hc.name }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- if .Values.runbooks.configMap }}
+        - name: runbooks
+          configMap:
+            name: {{ .Values.runbooks.configMap }}
+        {{- end }}
+        {{- if .Values.model.caConfigMap.name }}
+        - name: model-ca
+          configMap:
+            name: {{ .Values.model.caConfigMap.name }}
+        {{- end }}
+        {{- range $i, $hc := .Values.hostedClusters }}
+        - name: hosted-{{ $i }}
+          secret:
+            secretName: {{ required "hostedClusters[].secretName is required" $hc.secretName }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.persistence.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

@@ -1,0 +1,19 @@
+The upgrade agent runs as Sandbox {{ include "upgrade-agent.fullname" . }} in {{ .Release.Namespace }}.
+
+  oc -n {{ .Release.Namespace }} get sandbox {{ include "upgrade-agent.fullname" . }}
+  oc -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Endpoint for the upgrade-agent-worker (its UPGRADE_AGENT_URL):
+
+  http://{{ include "upgrade-agent.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+{{- if not .Values.model.baseUrl }}
+
+WARNING: model.baseUrl is empty. Every invocation will answer needs_human
+("no model is configured") until it is set.
+{{- end }}
+{{- if not .Values.hostedClusters }}
+
+NOTE: no hostedClusters credentials are mounted. The agent reads only the
+evidence and the MCE side until one is added per cluster.
+{{- end }}

@@ -1,0 +1,99 @@
+{{- /*
+The agent's identity on the MCE: READ ONLY, never Secrets (AGENT.md #26).
+No create, update, patch or delete anywhere; no pods/exec, impersonate,
+escalate or bind. Proposals are executed by the workflow's own limb.
+*/ -}}
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "upgrade-agent.serviceAccountName" . }}
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+{{- end }}
+{{- if .Values.rbac.create }}
+{{- $fullname := include "upgrade-agent.fullname" . }}
+{{- $sa := include "upgrade-agent.serviceAccountName" . }}
+---
+# Find a cluster's HostedCluster (and its NodePools) by name, wherever day1 put it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-{{ .Release.Namespace }}-hostedclusters
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [hypershift.openshift.io]
+    resources: [hostedclusters, nodepools]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-{{ .Release.Namespace }}-hostedclusters
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-{{ .Release.Namespace }}-hostedclusters
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.rbac.allNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-{{ .Release.Namespace }}-hcp-read
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+rules:
+  {{- include "upgrade-agent.hcpReadRules" . | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-{{ .Release.Namespace }}-hcp-read
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-{{ .Release.Namespace }}-hcp-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+{{- range .Values.rbac.hcpNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-hcp-read
+  namespace: {{ . }}
+  labels:
+    {{- include "upgrade-agent.labels" $ | nindent 4 }}
+rules:
+  {{- include "upgrade-agent.hcpReadRules" $ | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-hcp-read
+  namespace: {{ . }}
+  labels:
+    {{- include "upgrade-agent.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-hcp-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}

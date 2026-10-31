@@ -1,0 +1,10 @@
+# The upgrade agent service. Small on purpose: an HTTP server, an HTTP client
+# (for the model endpoint and the Kubernetes API alike), the typed contract,
+# and YAML for kubeconfigs and runbook front matter.
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+httpx>=0.27,<1
+# The minor the workflows repo runs, so the vendored contract's JSON schema
+# renders the same on both sides (tests/test_contract.py).
+pydantic>=2.14,<2.15
+pyyaml>=6,<7

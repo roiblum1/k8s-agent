@@ -1,0 +1,44 @@
+{
+  "invocation_id": "smoke-test/00000000-0000-0000-0000-000000000001",
+  "workflow_id": "smoke-test",
+  "mce_cluster": "ocp4-mce-test",
+  "cluster": "demo-hc",
+  "profile": "generic",
+  "phase": "preflight",
+  "step": {
+    "kind": "control-plane",
+    "version": "4.20.18",
+    "reason": "target",
+    "nodepools": []
+  },
+  "from_version": "4.19.53",
+  "nodepool": null,
+  "gate": "preflight",
+  "failing_checks": [
+    {
+      "name": "cluster-operators",
+      "passed": false,
+      "expected": "all Available, none Degraded",
+      "observed": "image-registry (Degraded=True: ImagePrunerJobFailed)",
+      "on_failure": "needs-human"
+    }
+  ],
+  "evidence": {
+    "sections": {
+      "hostedcluster": "Available=True ClusterVersionSucceeding=True Progressing=False",
+      "nodepools": "workers at 4.20.18:\nReady=True UpdatingVersion=False",
+      "clusteroperators": "image-registry (Degraded=True: ImagePrunerJobFailed)",
+      "argo": "Synced/Healthy at 0123abc",
+      "data-plane": "every ingress, image-registry and console Pod Running",
+      "events": "2026-10-31T00:05:12Z Job/openshift-image-registry/image-pruner-29890999 BackoffLimitExceeded x1: Job has reached the specified backoff limit"
+    },
+    "truncated": false
+  },
+  "budget": {
+    "wall_clock_seconds": 900,
+    "max_tool_calls": 40,
+    "max_tier1_actions": 2,
+    "max_model_calls": 20
+  },
+  "tier1_enabled": false
+}

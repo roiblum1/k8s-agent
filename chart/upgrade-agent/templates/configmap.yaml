@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "upgrade-agent.fullname" . }}
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+data:
+  # The model endpoint (its key comes from model.apiKeySecret, never from here).
+  MODEL_BASE_URL: {{ .Values.model.baseUrl | quote }}
+  MODEL_NAME: {{ .Values.model.name | quote }}
+  MODEL_TOOL_MODE: {{ .Values.model.toolMode | quote }}
+  MODEL_TIMEOUT_SECONDS: {{ .Values.model.timeoutSeconds | quote }}
+  MODEL_MAX_TOKENS: {{ .Values.model.maxTokens | quote }}
+  MODEL_TEMPERATURE: {{ .Values.model.temperature | quote }}
+  {{- if .Values.model.caConfigMap.name }}
+  MODEL_TLS_CA: {{ printf "/etc/upgrade-agent/model-ca/%s" .Values.model.caConfigMap.key | quote }}
+  {{- end }}
+  REPAIR_ATTEMPTS: {{ .Values.repairAttempts | quote }}
+  MAX_CONCURRENT: {{ .Values.maxConcurrent | quote }}
+  TOOL_RESULT_CHARS: {{ .Values.toolResultChars | quote }}
+  HOSTED_CREDENTIALS_DIR: "/var/run/upgrade-agent/hosted"
+  HOSTED_API_SERVER: {{ .Values.hostedApiServer | quote }}
+  STATE_DIR: {{ ternary "/var/lib/upgrade-agent" "" .Values.persistence.enabled | quote }}
+  RUNBOOK_DIR: {{ ternary "/etc/upgrade-agent/runbooks" "" (not (empty .Values.runbooks.configMap)) | quote }}

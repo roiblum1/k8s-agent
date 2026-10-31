@@ -1,0 +1,76 @@
+# The upgrade agent's OWN identity INSIDE one hosted cluster: read-only, never Secrets.
+# Apply it with the hosted cluster's kubeconfig (not the MCE's):
+#   oc --kubeconfig <hosted kubeconfig> apply -f hosted-identity/upgrade-agent-reader.yaml
+# Then turn its token into the kubeconfig Secret the chart mounts (README, "The agent's
+# identity on a hosted cluster"). Production replaces this with a ManagedServiceAccount and a
+# ManifestWork (DESIGN §9 item 5); the rules stay the same. No create, update, patch, delete,
+# pods/exec, impersonate, escalate or bind.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: upgrade-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: upgrade-agent
+  namespace: upgrade-agent
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: upgrade-agent-token
+  namespace: upgrade-agent
+  annotations:
+    kubernetes.io/service-account.name: upgrade-agent
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: upgrade-agent-reader
+rules:
+  # The kinds of upgrade_agent/kube.py HOSTED_KINDS, and nothing else.
+  - apiGroups: [""]
+    resources: [pods, pods/log, nodes, events, namespaces, services, configmaps, persistentvolumeclaims]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list]
+  - apiGroups: [config.openshift.io]
+    resources: [clusteroperators, clusterversions, imagedigestmirrorsets]
+    verbs: [get, list]
+  - apiGroups: [operator.openshift.io]
+    resources: [ingresscontrollers]
+    verbs: [get, list]
+  - apiGroups: [imageregistry.operator.openshift.io]
+    resources: [imagepruners, configs]
+    verbs: [get, list]
+  - apiGroups: [route.openshift.io]
+    resources: [routes]
+    verbs: [get, list]
+  - apiGroups: [certificates.k8s.io]
+    resources: [certificatesigningrequests]
+    verbs: [get, list]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingwebhookconfigurations, mutatingwebhookconfigurations]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: upgrade-agent-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: upgrade-agent-reader
+subjects:
+  - kind: ServiceAccount
+    name: upgrade-agent
+    namespace: upgrade-agent

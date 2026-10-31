@@ -1,0 +1,22 @@
+{{- /*
+The agent's stable endpoint: http://<fullname>.<namespace>.svc:<port>/v1/invoke.
+A plain ClusterIP Service on the pod's labels, as agent-sandbox's
+claimed-sandbox-service example does; the Sandbox's own headless Service
+(spec.service) is left off. Ready pods only.
+*/ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "upgrade-agent.fullname" . }}
+  labels:
+    {{- include "upgrade-agent.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "upgrade-agent.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  publishNotReadyAddresses: false

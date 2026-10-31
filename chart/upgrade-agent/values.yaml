@@ -1,0 +1,118 @@
+# The upgrade agent, one release per MCE, in the namespace the release targets
+# (the chart creates no Namespace). See ../../README.md.
+
+image:
+  # The OpenShift internal registry after the README's binary build into the
+  # namespace `upgrade-agent`; in production, the mirror registry's copy.
+  repository: image-registry.openshift-image-registry.svc:5000/upgrade-agent/upgrade-agent
+  tag: latest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# --- the model: any OpenAI-compatible Chat Completions endpoint --------------
+model:
+  # Up to and including the API version; the agent appends /chat/completions.
+  # e.g. http://<vllm-service>.<namespace>.svc:8000/v1, or a gateway's /v1.
+  baseUrl: ""
+  name: ""
+  # "native": tools in the request's `tools` parameter (vLLM needs
+  # --enable-auto-tool-choice --tool-call-parser <parser>). "prompt": tools
+  # described in the prompt, answers read as JSON (for an endpoint without
+  # tool calling).
+  toolMode: native
+  timeoutSeconds: 120
+  maxTokens: 2048
+  temperature: 0
+  # The API key, from an EXISTING Secret (the chart never holds it). Leave
+  # secretName empty for an endpoint without auth.
+  apiKeySecret:
+    secretName: ""
+    key: api-key
+  # A PEM CA bundle for an endpoint signed by an internal CA, from an existing
+  # ConfigMap. Empty: the image's default trust store.
+  caConfigMap:
+    name: ""
+    key: ca.crt
+
+# --- the caller ------------------------------------------------------------------
+# When set, POST /v1/invoke needs "Authorization: Bearer <token>"; the
+# upgrade-agent-worker sends the same token (its UPGRADE_AGENT_TOKEN).
+apiToken:
+  secretName: ""
+  key: token
+
+# --- the agent's own identity on each hosted cluster ---------------------------
+# One entry per hosted cluster on this MCE the agent may read. Each Secret is
+# the agent's OWN read-only credential for that cluster, never the
+# HostedCluster's admin kubeconfig: a `kubeconfig` key, or a `token` key
+# (+ `ca.crt`), the shape of a ManagedServiceAccount token Secret. Mounted at
+# /var/run/upgrade-agent/hosted/<name>/. A cluster with no entry is diagnosed
+# from the evidence and the MCE side only.
+hostedClusters: []
+#  - name: <cluster>
+#    secretName: upgrade-agent-hosted-<cluster>
+# The hosted API server as reached from this MCE's pod network ({hcp_namespace}
+# is filled in). Empty: the kubeconfig's own server.
+hostedApiServer: "https://kube-apiserver.{hcp_namespace}.svc:6443"
+
+# --- read-only RBAC on the MCE ---------------------------------------------------
+rbac:
+  create: true
+  # The agent finds a cluster's HostedCluster and NodePools by name in any
+  # namespace: get/list on those two kinds, cluster-wide. Nothing else.
+  # Then it reads the kinds below in that cluster's HCP namespace only. RBAC
+  # has no label selector, so either list the HCP namespaces
+  # (<hc-namespace>-<cluster>) here, one Role each...
+  hcpNamespaces: []
+  # ...or grant the same read-only rules in every namespace (ClusterRoleBinding).
+  # Never Secrets, either way.
+  allNamespaces: false
+
+serviceAccount:
+  create: true
+  name: ""  # default: the release's full name
+
+# --- the service -------------------------------------------------------------------
+service:
+  port: 8080
+maxConcurrent: 4
+repairAttempts: 2
+toolResultChars: 8000
+
+# Brain runbooks (markdown) from an existing ConfigMap, mounted at RUNBOOK_DIR.
+# Empty: no runbooks, the agent diagnoses from evidence alone.
+runbooks:
+  configMap: ""
+
+# Verdicts kept on the Sandbox's own volume, so a retry after a pod restart
+# gets the verdict the first attempt reached. volumeClaimTemplates are
+# immutable on a Sandbox: change this only with a reinstall.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    memory: 512Mi
+
+podLabels: {}
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# --- network ---------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+  # Who may call the agent: the upgrade-agent-worker's pods.
+  ingressFrom:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: upgrade-agent-worker
+  # Egress is left open unless rules are given here (DNS, the model endpoint,
+  # the MCE API, the hosted API servers). With rules, ONLY these are allowed.
+  egress: []
