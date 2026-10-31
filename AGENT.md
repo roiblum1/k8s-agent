@@ -113,3 +113,15 @@ The worker's endpoint is `http://upgrade-agent.upgrade-agent.svc:8080`.
 - `persistence.enabled` cannot be toggled on an existing Sandbox; reinstall.
 - Optional hardening: `networkPolicy.enabled: true` with `networkPolicy.egress` rules (DNS, model, MCE
   and hosted API servers).
+
+## Air gap: load the saved images
+
+`images/*.tar` are `podman save` archives of the images in `images-to-mirror.txt`, built for
+`linux/amd64` and stored with Git LFS (`git lfs pull` after cloning).
+
+```bash
+podman load -i images/agent-sandbox-controller-v1.0.9-amd64.tar
+podman load -i images/python-3.12-slim-amd64.tar
+podman tag registry.k8s.io/agent-sandbox/agent-sandbox-controller:v1.0.9 <registry>/agent-sandbox/agent-sandbox-controller:v1.0.9
+podman push <registry>/agent-sandbox/agent-sandbox-controller:v1.0.9
+```
