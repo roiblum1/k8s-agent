@@ -256,4 +256,47 @@ agent answers this long before the request's wall clock), `TOOL_RESULT_CHARS`,
 
 ## How it was installed on the sandbox
 
-<!-- Filled in by the orchestrator. -->
+2026-10-31, for the first end-to-end upgrade demo (workspace `deploy/upgrade-demo/`
+in Cluster-AutoUpgrade has the scripts). Everything lives in namespace
+`upgrade-demo` on the sandbox hub (OCP 4.20.35, MCE 2.17.3), and is deleted with it.
+
+1. **agent-sandbox v1.0.9, core only** (`sandbox.yaml`: namespace
+   `agent-sandbox-system`, the controller, the `Sandbox` CRD). The controller runs
+   under OpenShift's default `restricted-v2` with no change.
+
+   ```bash
+   oc apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.9/sandbox.yaml
+   ```
+
+2. **The image, built in-cluster** from `agent/`:
+
+   ```bash
+   oc -n upgrade-demo new-build --name upgrade-agent --binary --strategy docker
+   oc -n upgrade-demo start-build upgrade-agent --from-dir agent --follow
+   ```
+
+3. **A key for the model.** The model is the lab's Qwen2.5-0.5B (`qwen-tiny`, vLLM
+   on CPU) behind the lab's AI gateway, which takes a key per tenant. The key was
+   made in aigw-ui on the hub with its admin token: a tenant `upgrade-agent-demo`,
+   a daily quota on `qwen-tiny` (without one the gateway answers 429), then a key,
+   piped straight into Secret `upgrade-demo/upgrade-agent-model` (`api-key`) —
+   `deploy/upgrade-demo/model-key.sh create`. Neither the admin token nor the key
+   was printed or written to a file.
+
+4. **The agent's own reader in the hosted cluster** (`hosted-identity/upgrade-agent-reader.yaml`,
+   applied with the hosted cluster's admin kubeconfig held in memory), and Secret
+   `upgrade-demo/upgrade-agent-hosted-ocp4-upgrade-demo` built from that reader's
+   token — the steps of `make-kubeconfig-secret.sh`, each `oc` call reading the
+   admin kubeconfig from its own process substitution.
+
+5. **The chart**, with `deploy/upgrade-demo/agent-values.yaml` (`model.name: qwen-tiny`,
+   `model.toolMode: prompt`, the two Secrets, the HCP namespace) and the gateway URL
+   taken from aigw-ui's own `GATEWAY_URL` at install time (`install-agent.sh`), so
+   no hostname is in a file. A random `upgrade-agent-token` Secret is shared with the
+   worker.
+
+**Result:** the Sandbox is Ready and `/v1/invoke` answers. With the lab model the
+gateway accepts the key (its `/v1/models` gives 200 with it, 401 without) but the
+model times out (`504`), so the agent returns `needs_human` naming the 504 — as
+expected on the sandbox. Point `model.baseUrl` / `model.name` at a working model
+and the same install gives a diagnosis.
