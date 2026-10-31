@@ -23,6 +23,7 @@ There is no write tool. Actions are proposals in the verdict (catalog.py).
 from __future__ import annotations
 
 import json
+import logging
 import re
 from contextlib import AsyncExitStack
 from typing import Any
@@ -31,6 +32,8 @@ from upgrade_agent import kube
 from upgrade_agent.config import Settings
 from upgrade_agent.contract import AgentRequest
 from upgrade_agent.kube import HOSTED_KINDS, MCE_KINDS, KubeError, KubeReader
+
+log = logging.getLogger(__name__)
 
 SUBMIT_VERDICT = "submit_verdict"
 _NAME = re.compile(r"[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?")
@@ -190,8 +193,11 @@ class Toolbox:
         if target is None:
             self._mce_error = "the MCE API is not reachable from here (no in-cluster ServiceAccount)"
         else:
-            self._mce = await self._stack.enter_async_context(
-                KubeReader(target, timeout=self._settings.kube_timeout_seconds))
+            try:
+                self._mce = await self._stack.enter_async_context(
+                    KubeReader(target, timeout=self._settings.kube_timeout_seconds))
+            except (OSError, ValueError) as err:
+                self._mce_error = f"the MCE ServiceAccount's CA is unusable ({type(err).__name__})"
         return self
 
     async def __aexit__(self, *exc: object) -> None:
@@ -210,6 +216,9 @@ class Toolbox:
             return f"error: bad arguments for {name}: {err}"
         except (KubeError, ValueError) as err:
             return f"error: {err}"
+        except Exception as err:  # a tool never raises to the loop: the model gets the failure as a result
+            log.exception("tool %s failed", name)
+            return f"error: {name} failed ({type(err).__name__})"
         limit = self._settings.tool_result_chars
         return text if len(text) <= limit else text[:limit] + f"\n[cut: {len(text) - limit} more characters]"
 
@@ -235,6 +244,8 @@ class Toolbox:
                     KubeReader(target, timeout=self._settings.kube_timeout_seconds))
             except KubeError as err:
                 self._hosted_error = str(err)
+            except (OSError, ValueError) as err:  # an unreadable file, a CA that is not PEM
+                self._hosted_error = f"its credential for {self._request.cluster} is unusable ({type(err).__name__})"
         if self._hosted is None:
             raise KubeError(f"the hosted cluster cannot be read: {self._hosted_error}")
         return self._hosted

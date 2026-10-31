@@ -129,6 +129,14 @@ async def test_the_hosted_server_is_the_kas_service_seen_from_the_mce(mock_http,
     assert nodes.called
 
 
+async def test_a_credential_with_a_broken_ca_is_an_error_not_a_crash(settings, hosted_credentials):
+    kubeconfig = hosted_credentials / "demo-hc" / "kubeconfig"
+    kubeconfig.write_text(kubeconfig.read_text().replace(
+        "server: https://hosted-api.test:6443", "server: https://hosted-api.test:6443, certificate-authority-data: bm90IGEgY2VydA=="))
+    result = await _call(settings, "hosted_list", kind="Node")
+    assert result.startswith("error: the hosted cluster cannot be read: its credential for demo-hc is unusable")
+
+
 def test_a_kubeconfig_that_skips_tls_verification_is_refused():
     with pytest.raises(kube.KubeError, match="turns TLS verification off"):
         kube.target_from_kubeconfig("""
